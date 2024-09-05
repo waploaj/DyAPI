@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lookup>
+    <api api_code="10001">
+        <controller class="com.daraja.daraja.ctl.BalanceCtl"/>
+        <bo class="com.daraja.daraja.bo.BalanceBo" method="processBalance"/>
+    </api>
+    <!--TODO Add more API mappings here -->
+</lookup>
