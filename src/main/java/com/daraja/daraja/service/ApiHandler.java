@@ -58,6 +58,12 @@ public class ApiHandler extends HttpServlet {
         try {
             // Fetch the class that contains the set methods from procctlcfg
             String targetClassName = (String) apiConfig.get("className");
+            //something to note here we many have a common class that check-
+            //TABLE define data filed, columnn data length and all of table properties
+            //To check if it is new or existing Table and now  to perform operation call-
+            //by call the data operaion and manipulation of call -
+            //saving class which will save the record to the deiine the data properties
+            //and having common class to perfome such a task
 
             // Use UtilityFunctions to dynamically set parameters before invoking BO
             UtilityFunctions.setRequestParametersDynamically(targetClassName, requestParams);
