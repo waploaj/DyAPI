@@ -56,7 +56,8 @@ public class UtilityFunctions {
 
     // TODO 3: Validate request parameters based on procctlmpg configuration
     public static boolean validateRequestParams(Map<String, Object> apiConfig, Map<String, String> requestParams) {
-        // Simulating a check for mandatory "accountId"
+        // Simulating a check for mandatory "element"
+        //TODO to check for validation based on field validation class
         if (!requestParams.containsKey("accountId")) {
             return false;
         }
