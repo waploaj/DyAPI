@@ -32,24 +32,43 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
+import java.sql.Date;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class ApiHandler extends HttpServlet {
     @Override
     protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         // TODO Step 1: Extract the API code from the URL
-        String apiCode = extractApiCodeFromUrl(req.getRequestURI());
+        List<Map<String, Object>>  api_preconfig = extractApiCodeFromUrl(req.getRequestURI());
+        String apiCode = "";
+        if(!api_preconfig.get(0).containsKey("status")) {
+            if (!api_preconfig.isEmpty() && api_preconfig.get(0).get("api_code") != null) {
+                apiCode = api_preconfig.get(0).get("api_code").toString().trim();
+                if (!apiCode.equalsIgnoreCase("")) {
+                    // TODO: call validation based on API lifespan and validation required.
+                }
+            }
+        }else{
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST,api_preconfig.get(0).get("message").toString());
+        }
+
 
         // TODO Step 2: Fetch API configuration based on api_code
-        Map<String, Object> apiConfig = UtilityFunctions.fetchApiConfig(apiCode);
-        if (apiConfig == null) {
-            resp.sendError(HttpServletResponse.SC_NOT_FOUND, "API not found");
+        List<Map<String, Object>>  apiFetchConfig = UtilityFunctions.fetchApiConfig(apiCode);
+        System.out.println(apiFetchConfig);
+        if (apiFetchConfig.get(0).containsKey("status") ) {
+            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, api_preconfig.get(0).get("message").toString());
             return;
         }
 
         // TODO Step 3: Fetch and validate request parameters
         Map<String, String> requestParams = UtilityFunctions.getRequestParameters((javax.servlet.http.HttpServletRequest) req);
-        if (!UtilityFunctions.validateRequestParams(apiConfig, requestParams)) {
+        if (!UtilityFunctions.validateRequestParams(apiFetchConfig, requestParams)) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid request parameters");
             return;
         }
@@ -57,7 +76,7 @@ public class ApiHandler extends HttpServlet {
         // Step 4: Dynamically set request parameters using the 'set' methods from procctlmpg
         try {
             // Fetch the class that contains the set methods from procctlcfg
-            String targetClassName = (String) apiConfig.get("className");
+            String targetClassName = (String) apiFetchConfig.get(0).get("className");
             //something to note here we many have a common class that check-
             //TABLE define data filed, columnn data length and all of table properties
             //To check if it is new or existing Table and now  to perform operation call-
@@ -74,8 +93,8 @@ public class ApiHandler extends HttpServlet {
         }
 
         // TODO Step 4: Dynamically invoke the class and method specified in procctlcfg
-        String className = (String) apiConfig.get("className");
-        String methodName = (String) apiConfig.get("methodName");
+        String className = (String) apiFetchConfig.get(0).get("className");
+        String methodName = (String) apiFetchConfig.get(0).get("methodName");
 
         // TODO Step 5: Invoke the method dynamically
         try {
@@ -86,9 +105,26 @@ public class ApiHandler extends HttpServlet {
         }
     }
 
-    private String extractApiCodeFromUrl(String url) {
-        // TODO: Logic to extract the API code from the URL
-        String api_code = "10001";
-        return api_code;
+    private List<Map<String, Object>> extractApiCodeFromUrl(String url) {
+        List<Map<String, Object>> apiPreconfigList = new ArrayList<>();
+        // Create a new map
+        Map<String, Object> config = new HashMap<>();
+        config.put("status", "ERROR");
+        config.put("message", "Failed to load getApiCode");
+
+        String requestPath = UtilityFunctions.getAfterV1(url);
+        List<Map<String, Object>> results = UtilityFunctions.getApiCode(requestPath);
+
+        // Process all results
+        if (!results.isEmpty()) {
+            apiPreconfigList.addAll(results);
+        }else{
+            apiPreconfigList.add(config);
+        }
+
+        return apiPreconfigList;
     }
+
 }
+
+

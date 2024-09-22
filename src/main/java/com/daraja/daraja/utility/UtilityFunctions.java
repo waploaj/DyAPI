@@ -25,24 +25,61 @@ SOFTWARE.
 
 package com.daraja.daraja.utility;
 
+import com.daraja.daraja.service.DatabaseService;
+
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.lang.reflect.Array;
 import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.Map;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 public class UtilityFunctions {
 
+    private static DatabaseService dbservice;
+
+    private UtilityFunctions() {
+    }
+
+    public static DatabaseService getDatabaseService() {
+        if (dbservice == null) {
+            dbservice = new DatabaseService();
+        }
+        return dbservice;
+    }
+
+    private static final String SQL_INJECTION_PATTERN =
+            ".*(['\";--<>]|\\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|WHERE|OR|AND|BETWEEN|LIKE|HAVING|JOIN)\\b).*";
+
+
+
     // TODO 1: Fetch API configuration from the database based on api_code
-    public static Map<String, Object> fetchApiConfig(String apiCode) {
+    public static List<Map<String, Object>>  fetchApiConfig(String apiCode) {
         // Simulating database query
         Map<String, Object> apiConfig = new HashMap<>();
-        if (apiCode.equals("BALANCE_API")) {
-            apiConfig.put("apiCode", "BALANCE_API");
-            apiConfig.put("className", "com.yourcompany.yourapp.ctl.BalanceCtl");
-            apiConfig.put("methodName", "processBalance");
+        List<Map<String, Object>> apiFetchConfig = new ArrayList<>();
+        Map<String, Object> config = new HashMap<>();
+        config.put("status", "ERROR");
+        config.put("message", "Failed to load FetchConfig");
+        if (!apiCode.trim().equalsIgnoreCase("")|| !(apiCode == null)) {
+            List<Map<String, Object>> results = UtilityFunctions.getApiFetchConfig(apiCode);
+
+            if (!results.isEmpty()) {
+                apiFetchConfig.addAll(results);
+                if(apiFetchConfig.get(0).get("post_method").toString().trim().toLowerCase().equalsIgnoreCase("post")){
+                    //TODO this is post method we have to work on it
+                }
+                System.out.println(apiFetchConfig);
+            }else{
+                apiFetchConfig.add(config);
+            }
+
         }
-        return apiConfig;
+        return apiFetchConfig;
     }
 
     // TODO 2: Extract request parameters from the HttpServletRequest
@@ -55,7 +92,7 @@ public class UtilityFunctions {
     }
 
     // TODO 3: Validate request parameters based on procctlmpg configuration
-    public static boolean validateRequestParams(Map<String, Object> apiConfig, Map<String, String> requestParams) {
+    public static boolean validateRequestParams(List<Map<String, Object>> apiFetchConfig, Map<String, String> requestParams) {
         // Simulating a check for mandatory "element"
         //TODO to check for validation based on field validation class
         if (!requestParams.containsKey("accountId")) {
@@ -126,4 +163,84 @@ public class UtilityFunctions {
         Method method = clazz.getMethod(methodName, Map.class, HttpServletResponse.class);
         method.invoke(instance, params, resp);
     }
+
+
+
+
+
+    public static String getAfterV1(String url) {
+        String prefix = "/v1/";
+        // Convert the input string to lower case for case-insensitive comparison
+        String lowerUrl = url.toLowerCase();
+        int index = lowerUrl.indexOf(prefix);
+
+        if (index != -1) {
+            return url.substring(index + prefix.length());
+        } else {
+            //TODO having main table to store the error message define
+            //each error with an errorcode
+            //having common class that retrieve errorcode and display to user
+            return "Invalid Request";
+        }
+    }
+
+    public static List<Map<String, Object>> executeQuery(String query, List<Object> parameters) {
+        DatabaseService dbService = getDatabaseService();
+        try  {
+            return dbService.executeQuery(query, parameters);
+        } catch (Exception e) {
+            // Handle SQL exception
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static List<Map<String, Object>> getApiCode(String _afterVersion) {
+        String requestPath = "";
+        if(!containsSqlInjection(_afterVersion)){
+            requestPath = _afterVersion;
+        }
+        String _query = "SELECT * FROM PUBLIC.PREAPICONFIG WHERE PATH = ?";
+
+        List<Map<String, Object>> results = getDatabaseService().executeQuery(_query, Collections.singletonList(requestPath));
+
+        return results;
+    }
+
+    public static List<Map<String, Object>> getApiFetchConfig(String api_code) {
+        Long requestPath = 0L;
+        if(!containsSqlInjection(api_code)){
+            requestPath = Long.parseLong(api_code) ;
+        }
+        String _query = "SELECT * FROM APIFETCHCONFIG WHERE API_CODE = ?";
+
+        List<Map<String, Object>> results = getDatabaseService().executeQuery(_query, Collections.singletonList(requestPath));
+
+        return results;
+    }
+
+
+
+
+
+    public static boolean containsSqlInjection(String input) {
+        if (input == null || input.isEmpty()) {
+            return false; // No SQL injection possible
+        }
+        try {
+            Pattern pattern = Pattern.compile(SQL_INJECTION_PATTERN, Pattern.CASE_INSENSITIVE);
+            return pattern.matcher(input).matches();
+        } catch (PatternSyntaxException e) {
+           // e.printStackTrace(); // Log the error for debugging
+            return false; // Default to safe if regex fails
+        }
+    }
+
+
+
+
+
+
+
+
 }
