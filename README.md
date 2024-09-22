@@ -98,5 +98,55 @@ Usage:
 ```java
 ApiDebug.log("This is a debug message");
 ApiDebug.error("This is an error message");
+```
+
+# API Flow
+
+### API Request
+- Incoming requests will contain an `api_code` to identify which controller (`ctl`) and BO or Interface methods to invoke.
+
+### Parameter Extraction
+- Parameters will be extracted and validated based on the `procctlmpg` table.
+
+### Interface Layer Invocation
+- The correct class and method in the Interface Layer are fetched from the `procctlcfg` table and invoked using reflection.
+
+### Data Processing
+- Data collected from channel devices (e.g., sensor data) will be processed via the Interface Layer.
+
+### Core Interaction
+- The Interface Layer will handle requests to/from the core, ensuring no direct communication between the core and channel devices.
+
+### Response Generation
+- A response is generated based on the processed data and sent back to the caller.
+
+---
+
+# Device-Specific Integrations
+
+### iOS Devices
+- **Integration**: Swift will be used to communicate with iOS devices, leveraging native APIs for accessing sensors such as GPS and accelerometers.
+- **Data Collection**: Data will be collected at predefined intervals and validated through the Interface Layer.
+- **Efficiency**: The Interface Layer will manage device sleep and awake times for optimal power usage during data collection.
+
+### Android Devices
+- **Integration**: Kotlin and Java will be used to communicate with Android devices, accessing sensors and collecting data at configurable intervals.
+- **Proximity Detection**: Android devices will synchronize through the Interface Layer to ensure the most accurate and relevant data is collected.
+- **Sensor Management**: Sensors will have configurable time intervals for data collection, minimizing resource consumption.
+
+---
+
+# Interface Layer
+
+The Interface Layer acts as middleware between the core system and channel devices. Its main purpose is to decouple direct communication between the core system and channels like iOS and Android, ensuring that requests are properly routed and responses are handled efficiently.
+
+### Key Functions:
+- **Request Mediation**: All API requests from channel devices pass through the Interface Layer before reaching the core system.
+- **Response Handling**: The Interface Layer manages responses from the core and delivers them back to the respective channel.
+- **Core Decoupling**: By preventing direct interaction between channels and core systems, the Interface Layer ensures clean separation and flexibility.
+
+### Example Flow:
+1. An API request is received from an Android device.
+2. The request is passed to the Interface
 
 
