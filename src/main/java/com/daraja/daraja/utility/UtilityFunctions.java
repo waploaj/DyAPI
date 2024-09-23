@@ -26,6 +26,7 @@ SOFTWARE.
 package com.daraja.daraja.utility;
 
 import com.daraja.daraja.service.DatabaseService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -41,6 +42,7 @@ import java.util.regex.PatternSyntaxException;
 public class UtilityFunctions {
 
     private static DatabaseService dbservice;
+    private static ErrorHandlingUtility errorUtil = ErrorHandlingUtility.getInstance();
 
     private UtilityFunctions() {
     }
@@ -55,16 +57,14 @@ public class UtilityFunctions {
     private static final String SQL_INJECTION_PATTERN =
             ".*(['\";--<>]|\\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|WHERE|OR|AND|BETWEEN|LIKE|HAVING|JOIN)\\b).*";
 
-
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     // TODO 1: Fetch API configuration from the database based on api_code
     public static List<Map<String, Object>>  fetchApiConfig(String apiCode) {
         // Simulating database query
-        Map<String, Object> apiConfig = new HashMap<>();
+        errorUtil.clearError();
         List<Map<String, Object>> apiFetchConfig = new ArrayList<>();
-        Map<String, Object> config = new HashMap<>();
-        config.put("status", "ERROR");
-        config.put("message", "Failed to load FetchConfig");
+
         if (!apiCode.trim().equalsIgnoreCase("")|| !(apiCode == null)) {
             List<Map<String, Object>> results = UtilityFunctions.getApiFetchConfig(apiCode);
 
@@ -73,9 +73,8 @@ public class UtilityFunctions {
                 if(apiFetchConfig.get(0).get("post_method").toString().trim().toLowerCase().equalsIgnoreCase("post")){
                     //TODO this is post method we have to work on it
                 }
-                System.out.println(apiFetchConfig);
             }else{
-                apiFetchConfig.add(config);
+                errorUtil.setErrorByCode("ERR10002");
             }
 
         }
@@ -218,6 +217,17 @@ public class UtilityFunctions {
 
         return results;
     }
+
+
+    public static String convertToJson(Object object) {
+        try {
+            return objectMapper.writeValueAsString(object);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "{}"; // Return empty JSON in case of error
+        }
+    }
+
 
 
 
