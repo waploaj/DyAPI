@@ -72,12 +72,14 @@ public class ApiHandler extends HttpServlet {
 
 
         // TODO Step 3: Fetch and validate request parameters
-        //if(apiFetchConfig.get(0).get("post_method").toString().trim().toLowerCase().equalsIgnoreCase("post")) {
-            Map<String, String> requestParams = UtilityFunctions.getRequestParameters((javax.servlet.http.HttpServletRequest) req);
-            if (!UtilityFunctions.validateRequestParams(apiFetchConfig, requestParams)) {
-                errorUtil.setErrorByCode("ERR10003");
-            }
-        //}
+        Map<String, String> requestParams = UtilityFunctions.getRequestParameters(req);
+        if (errorUtil.checkStatus()) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write(errorUtil.getResponseJson());
+            return;
+        }
+
+        UtilityFunctions.validateRequestParams(apiFetchConfig, requestParams);
 
         if (errorUtil.checkStatus()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -110,7 +112,7 @@ public class ApiHandler extends HttpServlet {
 
         // TODO Step 5: Invoke the method dynamically
         try {
-            UtilityFunctions.invokeMethod(className, methodName, requestParams, (javax.servlet.http.HttpServletResponse) resp);
+            UtilityFunctions.invokeMethod(className, methodName, requestParams, (HttpServletResponse) resp);
         } catch (Exception e) {
             e.printStackTrace();
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal error while invoking API");
@@ -118,6 +120,7 @@ public class ApiHandler extends HttpServlet {
     }
 
     private List<Map<String, Object>> extractApiCodeFromUrl(String url) {
+        errorUtil.clearError();
         List<Map<String, Object>> apiPreconfigList = new ArrayList<>();
         String requestPath = UtilityFunctions.getAfterV1(url);
         List<Map<String, Object>> results = UtilityFunctions.getApiCode(requestPath);
@@ -129,6 +132,8 @@ public class ApiHandler extends HttpServlet {
         }
         return apiPreconfigList;
     }
+
+
 
 }
 
