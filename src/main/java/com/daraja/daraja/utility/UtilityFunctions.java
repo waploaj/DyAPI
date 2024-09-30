@@ -26,14 +26,16 @@ SOFTWARE.
 package com.daraja.daraja.utility;
 
 import com.daraja.daraja.service.DatabaseService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.io.BufferedReader;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -41,6 +43,7 @@ import java.util.regex.PatternSyntaxException;
 public class UtilityFunctions {
 
     private static DatabaseService dbservice;
+    private static ErrorHandlingUtility errorUtil = ErrorHandlingUtility.getInstance();
 
     private UtilityFunctions() {
     }
@@ -55,16 +58,14 @@ public class UtilityFunctions {
     private static final String SQL_INJECTION_PATTERN =
             ".*(['\";--<>]|\\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|WHERE|OR|AND|BETWEEN|LIKE|HAVING|JOIN)\\b).*";
 
-
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     // TODO 1: Fetch API configuration from the database based on api_code
     public static List<Map<String, Object>>  fetchApiConfig(String apiCode) {
         // Simulating database query
-        Map<String, Object> apiConfig = new HashMap<>();
+        errorUtil.clearError();
         List<Map<String, Object>> apiFetchConfig = new ArrayList<>();
-        Map<String, Object> config = new HashMap<>();
-        config.put("status", "ERROR");
-        config.put("message", "Failed to load FetchConfig");
+
         if (!apiCode.trim().equalsIgnoreCase("")|| !(apiCode == null)) {
             List<Map<String, Object>> results = UtilityFunctions.getApiFetchConfig(apiCode);
 
@@ -73,9 +74,8 @@ public class UtilityFunctions {
                 if(apiFetchConfig.get(0).get("post_method").toString().trim().toLowerCase().equalsIgnoreCase("post")){
                     //TODO this is post method we have to work on it
                 }
-                System.out.println(apiFetchConfig);
             }else{
-                apiFetchConfig.add(config);
+                errorUtil.setErrorByCode("ERR10002");
             }
 
         }
@@ -83,19 +83,71 @@ public class UtilityFunctions {
     }
 
     // TODO 2: Extract request parameters from the HttpServletRequest
+
+
     public static Map<String, String> getRequestParameters(HttpServletRequest req) {
+        errorUtil.clearError();
         Map<String, String> requestParams = new HashMap<>();
-        req.getParameterMap().forEach((key, values) -> {
-            requestParams.put(key, values[0]);
-        });
+
+        try {
+            StringBuilder jsonPayload = new StringBuilder();
+            BufferedReader reader = req.getReader();
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+                jsonPayload.append(line);
+            }
+
+            // Assuming the request body is in JSON format
+            if (jsonPayload.length() > 0) {
+                ObjectMapper objectMapper = new ObjectMapper();
+                // Parse JSON into a map
+                requestParams = objectMapper.readValue(jsonPayload.toString(), Map.class);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            errorUtil.setErrorByCode("ERR10005");
+        }
+
         return requestParams;
     }
+
 
     // TODO 3: Validate request parameters based on procctlmpg configuration
     public static boolean validateRequestParams(List<Map<String, Object>> apiFetchConfig, Map<String, String> requestParams) {
         // Simulating a check for mandatory "element"
         //TODO to check for validation based on field validation class
-        if (!requestParams.containsKey("accountId")) {
+        errorUtil.clearError();
+        try
+        {
+            List<Map<String, Object>> apiFetchRequestParam = getRequestParam(apiFetchConfig.get(0).get("api_code").toString());
+            System.out.println(apiFetchConfig);
+            if(requestParams.containsKey("user_id")){
+                validateUserIdAndProceed(requestParams.get("user_id"));
+            }else{
+                errorUtil.setErrorByCode("ERR10009");
+            }
+
+            if (errorUtil.checkStatus()) {
+                return false;
+            }
+
+            if (apiFetchConfig.get(0).get("post_method").toString().trim().equalsIgnoreCase("post")) {
+                for (int i = 0; i < apiFetchRequestParam.size(); i++) {
+                    if (apiFetchRequestParam.get(i).get("is_mandatory").equals("1")) {
+                        if (!requestParams.containsKey(apiFetchRequestParam.get(i).get("request_param").toString())) {
+                            errorUtil.setError(errorUtil.getErrorByCode("ERR10004") +" -> "+
+                                    apiFetchRequestParam.get(i).get("request_param").toString());
+                            return false;
+                        }
+
+                    }
+                }
+            }
+            //return true;
+        }catch (Exception e){
+            e.printStackTrace();
+            errorUtil.setErrorByCode("ERR10006");
             return false;
         }
         return true;
@@ -104,6 +156,7 @@ public class UtilityFunctions {
     // TODO: Method to dynamically set request parameters using 'set' methods from procctlmpg
     public static void setRequestParametersDynamically(String targetClassName, Map<String, String> requestParams) throws Exception {
         // Load the target class
+        errorUtil.clearError();
         Class<?> targetClass = Class.forName(targetClassName);
         Object targetInstance = targetClass.getDeclaredConstructor().newInstance();
 
@@ -219,6 +272,29 @@ public class UtilityFunctions {
         return results;
     }
 
+    public static List<Map<String, Object>> getRequestParam(String api_code){
+        Long requestPath = 0L;
+        if(!containsSqlInjection(api_code)){
+            requestPath = Long.parseLong(api_code) ;
+        }
+        String _query = "SELECT * FROM APIFETCHPARAM WHERE API_CODE = ?";
+
+        List<Map<String, Object>> results = getDatabaseService().executeQuery(_query, Collections.singletonList(requestPath));
+
+        return results;
+    }
+
+
+    public static String convertToJson(Object object) {
+        try {
+            return objectMapper.writeValueAsString(object);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "{}"; // Return empty JSON in case of error
+        }
+    }
+
+
 
 
 
@@ -237,8 +313,78 @@ public class UtilityFunctions {
     }
 
 
+    public static boolean validateUserIdAndProceed(String userId) throws Exception {
+        errorUtil.clearError();
+        if (userId == null || userId.trim().isEmpty()) {
+            errorUtil.setErrorByCode("ERR10007");
+            return false;
+        }
 
+        if (containsSqlInjection(userId)) {
+            errorUtil.setErrorByCode("ERR10008");
+            return false;
+        }
 
+        if (errorUtil.checkStatus()) {
+            return false;
+        }
+
+        List<Map<String, Object>> userDetails = getUserDetailsById(userId);
+
+        if (userDetails == null || userDetails.isEmpty()) {
+            errorUtil.setErrorByCode("ERR10009");
+            return false;
+        }
+
+        if (errorUtil.checkStatus()) {
+            return false;
+        }
+
+        Map<String, Object> userDetail = userDetails.get(0);
+        String userStatus = userDetail.get("user_status").toString();
+        Object blockDate = userDetail.get("block_date");
+
+        if (userStatus.equalsIgnoreCase("blocked") || blockDate != null) {
+            errorUtil.setErrorByCode("ERR10010");
+            return false;
+        }
+
+        if (errorUtil.checkStatus()) {
+            return false;
+        }
+        if (userStatus.toLowerCase().trim().equalsIgnoreCase("active") && blockDate == null) {
+            // Update the number_of_requests
+            updateUserRequestCount(userId);
+            if (errorUtil.checkStatus()) {
+                return  false;
+            }
+
+        } else {
+            errorUtil.setError("ERR10010");
+            return false;
+        }
+        return true;
+    }
+
+    public static void updateUserRequestCount(String userId) throws  SQLException{
+        String query = "UPDATE user_software_usage SET number_of_requests = number_of_requests + 1 WHERE user_id = ?";
+        try {
+            getDatabaseService().executeUpdate(query, Collections.singletonList(userId));
+        }catch (Exception e){
+            e.printStackTrace();
+            errorUtil.setErrorByCode("ERR10011");
+        }
+    }
+
+    public static List<Map<String, Object>> getUserDetailsById(String userId) {
+        if(!containsSqlInjection(userId)) {
+            String _query = "SELECT user_status, block_date, number_of_requests FROM user_software_usage WHERE user_id = ?";
+            return getDatabaseService().executeQuery(_query, Collections.singletonList(userId));
+        }else {
+            errorUtil.setErrorByCode("ERR10008");
+            return Collections.emptyList();
+        }
+    }
 
 
 

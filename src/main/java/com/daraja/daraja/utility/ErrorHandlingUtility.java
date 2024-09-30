@@ -95,4 +95,11 @@ public class ErrorHandlingUtility {
         }
     }
 
+    public String  getErrorByCode(String errorCode) {
+        String _query = "SELECT error_message FROM error_messages WHERE error_code = ?";
+
+        List<Map<String, Object>> results = getDatabaseService().executeQuery(_query, Collections.singletonList(errorCode));
+        return results.get(0).get("error_message").toString();
+    }
+
 }

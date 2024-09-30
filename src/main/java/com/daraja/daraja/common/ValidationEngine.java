@@ -22,22 +22,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-
 package com.daraja.daraja.common;
 
-import com.daraja.daraja.common.CommonValidation;
-import com.daraja.daraja.common.DataTypeValidation;
 import com.daraja.daraja.service.DatabaseService;
 import com.daraja.daraja.utility.ErrorHandlingUtility;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class ValidationEngine {
     private static DatabaseService dbservice;
@@ -53,70 +45,95 @@ public class ValidationEngine {
         return dbservice;
     }
 
-    public void validate(Map<String, Object> requestParams) throws Exception {
+    public void validate(String apiCode, Map<String, Object> requestParams) throws ValidationException {
         for (Map.Entry<String, Object> entry : requestParams.entrySet()) {
             String paramName = entry.getKey();
             Object paramValue = entry.getValue();
 
-            List<Map<String, Object>> rules = fetchValidationRules(paramName);
-            for (Map<String, Object> rule : rules) {
-                String validationType = (String) rule.get("validation_type");
-                String validationRule = (String) rule.get("validation_rule");
-
-                if ("business".equals(validationType)) {
-                    executeBusinessValidation(validationRule, paramValue);
-                } else if ("data_type".equals(validationType)) {
-                    executeDataTypeValidation(validationRule, paramValue, rule);
-                }
+            // Fetch validation rules based on api_code and parameter_name
+            boolean validationPassed = fetchValidationRules(apiCode, paramName, paramValue);
+            if (!validationPassed) {
+                throw new ValidationException("Validation failed for parameter: " + paramName);
             }
         }
     }
 
-    private List<Map<String, Object>> fetchValidationRules(String parameterName) throws Exception {
-        String _query = "SELECT * FROM ValidationRules WHERE parameter_name = ?";
-        List<Map<String, Object>> results = getDatabaseService().executeQuery(_query, Collections.singletonList(parameterName));
-        return results;
-    }
+    private boolean fetchValidationRules(String apiCode, String parameterName, Object paramValue) throws ValidationException {
+        // Fetch validation rules from the database based on api_code and parameter_name
+        String query = "SELECT * FROM ValidationRules WHERE api_code = ? AND parameter_name = ?";
+        List<Map<String, Object>> rules = getDatabaseService().executeQuery(query,
+                Arrays.asList(apiCode, parameterName));
 
-    private void executeBusinessValidation(String rule, Object value) {
-        switch (rule) {
-            //TODO These need to be implementated for business defined in table
-//            case "check_balance":
-//                if (!CommonValidation.checkBalance((double) value)) {
-//                    throw new RuntimeException("Balance check failed.");
-//                }
-//                break;
-//            case "check_date":
-//                if (!CommonValidation.checkDate((String) value)) {
-//                    throw new RuntimeException("Date check failed.");
-//                }
-//                break;
-//            case "update_balance":
-//                // Assume some business logic for updating balance
-//                break;
-//            default:
-//                break;
+        // Iterate through the rules and execute validations
+        for (Map<String, Object> rule : rules) {
+            String validationRule = (String) rule.get("validation_rule");
+            String businessValidationId = (String) rule.get("id");
+
+            // Retrieve codes from the rule
+            String businessValidationCode = (String) rule.get("business_validation_code");
+            String dataValidationCode = (String) rule.get("data_validation_code");
+            String commonValidationCode = (String) rule.get("common_validation_code");
+
+            // Check and execute appropriate validation
+            if (businessValidationCode != null && !businessValidationCode.isEmpty()) {
+                // Fetch business validation description and execute the validation
+                BusinessValidation businessValidation = fetchBusinessValidation(businessValidationId);
+                businessValidation.executeBusinessValidation(businessValidation, paramValue);
+            } else if (dataValidationCode != null && !dataValidationCode.isEmpty()) {
+                executeDataTypeValidation(dataValidationCode, paramValue, rule);
+            } else if (commonValidationCode != null && !commonValidationCode.isEmpty()) {
+                executeCommonValidation(commonValidationCode, paramValue);
+            } else {
+                throw new ValidationException("No valid validation type found for parameter: " + parameterName);
+            }
         }
+        return true; // Return true if all validations pass
     }
 
-    private void executeDataTypeValidation(String rule, Object value, Map<String, Object> ruleDetails) {
-       // switch (rule) {
+    private BusinessValidation fetchBusinessValidation(String validationCode) throws ValidationException {
+        String query = "SELECT * FROM BusinessValidation WHERE id = ?";
+        List<Map<String, Object>> validations = getDatabaseService().executeQuery(query, Arrays.asList(validationCode));
 
-        //TODO Datatype validation to be implementated based on table defination
+        if (validations.isEmpty()) {
+            throw new ValidationException("No business validation found for code: " + validationCode);
+        }
+
+        Map<String, Object> validation = validations.get(0);
+        return new BusinessValidation(
+                (String) validation.get("validation_code"),
+                (String) validation.get("validation_description")
+        );
+    }
+
+    private void executeDataTypeValidation(String rule, Object value, Map<String, Object> ruleDetails) throws ValidationException {
+        //TODO these one we require userstory and roadmap
+        // Implement data type validation logic based on the rule
+//        switch (rule) {
 //            case "is_not_negative":
 //                if (!DataTypeValidation.isNotNegative((double) value)) {
-//                    throw new RuntimeException("Value cannot be negative.");
+//                    throw new ValidationException("Value cannot be negative.");
 //                }
 //                break;
 //            case "check_length":
 //                int minLength = Integer.parseInt((String) ruleDetails.get("min_length"));
 //                int maxLength = Integer.parseInt((String) ruleDetails.get("max_length"));
 //                if (!DataTypeValidation.checkLength((String) value, minLength, maxLength)) {
-//                    throw new RuntimeException("Length check failed.");
+//                    throw new ValidationException("Length check failed.");
 //                }
 //                break;
+//            // Add more rules as needed
 //            default:
-//                break;
+//                throw new ValidationException("Unknown data type validation rule: " + rule);
 //        }
+    }
+
+    private void executeCommonValidation(String rule, Object value) throws ValidationException {
+        // Implement common validation logic based on the rule
+        switch (rule) {
+            // Example implementations
+            // Add common validation rules as needed
+            default:
+                throw new ValidationException("Unknown common validation rule: " + rule);
+        }
     }
 }

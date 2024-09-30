@@ -25,7 +25,9 @@ SOFTWARE.
 
 package com.daraja.daraja.service;
 
+import com.daraja.daraja.utility.ApiResponse;
 import com.daraja.daraja.utility.UtilityFunctions;
+import com.daraja.daraja.utility.ErrorHandlingUtility;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
@@ -41,35 +43,47 @@ import java.util.List;
 import java.util.Map;
 
 public class ApiHandler extends HttpServlet {
+
+    ErrorHandlingUtility errorUtil = ErrorHandlingUtility.getInstance();
+
     @Override
     protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        resp.setContentType("application/json");
+        resp.setCharacterEncoding("UTF-8");
+
         // TODO Step 1: Extract the API code from the URL
         List<Map<String, Object>>  api_preconfig = extractApiCodeFromUrl(req.getRequestURI());
         String apiCode = "";
-        if(!api_preconfig.get(0).containsKey("status")) {
-            if (!api_preconfig.isEmpty() && api_preconfig.get(0).get("api_code") != null) {
-                apiCode = api_preconfig.get(0).get("api_code").toString().trim();
-                if (!apiCode.equalsIgnoreCase("")) {
-                    // TODO: call validation based on API lifespan and validation required.
-                }
-            }
-        }else{
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST,api_preconfig.get(0).get("message").toString());
+
+        if (errorUtil.checkStatus()) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write(errorUtil.getResponseJson());
+            return;
         }
-
-
-        // TODO Step 2: Fetch API configuration based on api_code
+        System.out.println(errorUtil.checkStatus());
+        apiCode = api_preconfig.get(0).get("api_code").toString().trim();
         List<Map<String, Object>>  apiFetchConfig = UtilityFunctions.fetchApiConfig(apiCode);
-        System.out.println(apiFetchConfig);
-        if (apiFetchConfig.get(0).containsKey("status") ) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, api_preconfig.get(0).get("message").toString());
+
+        if (errorUtil.checkStatus()) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write(errorUtil.getResponseJson());
             return;
         }
 
+
         // TODO Step 3: Fetch and validate request parameters
-        Map<String, String> requestParams = UtilityFunctions.getRequestParameters((javax.servlet.http.HttpServletRequest) req);
-        if (!UtilityFunctions.validateRequestParams(apiFetchConfig, requestParams)) {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid request parameters");
+        Map<String, String> requestParams = UtilityFunctions.getRequestParameters(req);
+        if (errorUtil.checkStatus()) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write(errorUtil.getResponseJson());
+            return;
+        }
+
+        UtilityFunctions.validateRequestParams(apiFetchConfig, requestParams);
+
+        if (errorUtil.checkStatus()) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write(errorUtil.getResponseJson());
             return;
         }
 
@@ -98,7 +112,7 @@ public class ApiHandler extends HttpServlet {
 
         // TODO Step 5: Invoke the method dynamically
         try {
-            UtilityFunctions.invokeMethod(className, methodName, requestParams, (javax.servlet.http.HttpServletResponse) resp);
+            UtilityFunctions.invokeMethod(className, methodName, requestParams, (HttpServletResponse) resp);
         } catch (Exception e) {
             e.printStackTrace();
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal error while invoking API");
@@ -106,24 +120,20 @@ public class ApiHandler extends HttpServlet {
     }
 
     private List<Map<String, Object>> extractApiCodeFromUrl(String url) {
+        errorUtil.clearError();
         List<Map<String, Object>> apiPreconfigList = new ArrayList<>();
-        // Create a new map
-        Map<String, Object> config = new HashMap<>();
-        config.put("status", "ERROR");
-        config.put("message", "Failed to load getApiCode");
-
         String requestPath = UtilityFunctions.getAfterV1(url);
         List<Map<String, Object>> results = UtilityFunctions.getApiCode(requestPath);
-
         // Process all results
         if (!results.isEmpty()) {
             apiPreconfigList.addAll(results);
         }else{
-            apiPreconfigList.add(config);
+            errorUtil.setErrorByCode("ERR10001");
         }
-
         return apiPreconfigList;
     }
+
+
 
 }
 
