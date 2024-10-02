@@ -24,6 +24,8 @@ SOFTWARE.
 */
 package com.daraja.daraja.service;
 
+import com.daraja.daraja.utility.ErrorHandlingUtility;
+
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,6 +39,7 @@ public class DatabaseService {
     private String jdbcUrl;
     private String username;
     private String password;
+    private static ErrorHandlingUtility errorUtil = ErrorHandlingUtility.getInstance();
 
     public DatabaseService() {
         loadDatabaseProperties();
@@ -44,10 +47,15 @@ public class DatabaseService {
 
     // Load database properties from application.properties
     private void loadDatabaseProperties() {
+        errorUtil.clearError();
         Properties properties = new Properties();
         try (InputStream input = getClass().getClassLoader().getResourceAsStream("application.properties")) {
             if (input == null) {
+                errorUtil.setErrorByCode("");
                 System.out.println("Sorry, unable to find application.properties");
+                return;
+            }
+            if (errorUtil.checkStatus()) {
                 return;
             }
             properties.load(input);
@@ -55,7 +63,9 @@ public class DatabaseService {
             this.username = properties.getProperty("spring.datasource.username");
             this.password = properties.getProperty("spring.datasource.password");
         } catch (Exception e) {
-            e.printStackTrace(); // Handle exceptions appropriately
+            e.printStackTrace();
+            errorUtil.setErrorByCode("ERR10013");
+            return;
         }
     }
 
@@ -141,4 +151,32 @@ public class DatabaseService {
         }
         return rowsAffected;
     }
+
+    public List<Map<String, Object>> getValidValues(List<String> columns, String tableName, Map<String, Object> whereConditions) {
+        // Construct the SELECT clause
+        String columnsClause = String.join(", ", columns);
+
+        // Start building the SQL query
+        StringBuilder query = new StringBuilder("SELECT " + columnsClause + " FROM " + tableName);
+
+        // Construct the WHERE clause if there are conditions
+        if (!whereConditions.isEmpty()) {
+            query.append(" WHERE ");
+            List<String> conditionList = new ArrayList<>();
+            for (Map.Entry<String, Object> entry : whereConditions.entrySet()) {
+                String columnName = entry.getKey();
+                Object value = entry.getValue();
+                conditionList.add(columnName + " = ?");
+            }
+            // Join the conditions with AND
+            query.append(String.join(" AND ", conditionList));
+        }
+
+        // Prepare the parameters for the PreparedStatement
+        List<Object> parameters = new ArrayList<>(whereConditions.values());
+
+        // Execute the query and return the results
+        return executeQuery(query.toString(), parameters);
+    }
+
 }

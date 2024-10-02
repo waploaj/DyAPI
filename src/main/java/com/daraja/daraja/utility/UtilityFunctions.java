@@ -25,15 +25,14 @@ SOFTWARE.
 
 package com.daraja.daraja.utility;
 
+import com.daraja.daraja.common.validation.ValidationEngine;
 import com.daraja.daraja.service.DatabaseService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.lang.reflect.Array;
+
 import java.lang.reflect.Method;
-import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.io.BufferedReader;
 import java.util.*;
@@ -43,7 +42,10 @@ import java.util.regex.PatternSyntaxException;
 public class UtilityFunctions {
 
     private static DatabaseService dbservice;
+   // private static ValidationEngine validationEngine;
+   private static ValidationEngine validationEngine = ValidationEngine.getInstance();
     private static ErrorHandlingUtility errorUtil = ErrorHandlingUtility.getInstance();
+
 
     private UtilityFunctions() {
     }
@@ -54,6 +56,8 @@ public class UtilityFunctions {
         }
         return dbservice;
     }
+
+
 
     private static final String SQL_INJECTION_PATTERN =
             ".*(['\";--<>]|\\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|WHERE|OR|AND|BETWEEN|LIKE|HAVING|JOIN)\\b).*";
@@ -124,9 +128,10 @@ public class UtilityFunctions {
             System.out.println(apiFetchConfig);
             if(requestParams.containsKey("user_id")){
                 validateUserIdAndProceed(requestParams.get("user_id"));
-            }else{
-                errorUtil.setErrorByCode("ERR10009");
             }
+//            else{
+//                errorUtil.setErrorByCode("ERR10009");
+//            }
 
             if (errorUtil.checkStatus()) {
                 return false;
@@ -134,14 +139,24 @@ public class UtilityFunctions {
 
             if (apiFetchConfig.get(0).get("post_method").toString().trim().equalsIgnoreCase("post")) {
                 for (int i = 0; i < apiFetchRequestParam.size(); i++) {
-                    if (apiFetchRequestParam.get(i).get("is_mandatory").equals("1")) {
-                        if (!requestParams.containsKey(apiFetchRequestParam.get(i).get("request_param").toString())) {
-                            errorUtil.setError(errorUtil.getErrorByCode("ERR10004") +" -> "+
-                                    apiFetchRequestParam.get(i).get("request_param").toString());
-                            return false;
-                        }
+                    String paramName = apiFetchRequestParam.get(i).get("request_param").toString();
+                    boolean isMandatory = apiFetchRequestParam.get(i).get("is_mandatory").equals("1");
 
+                    if (isMandatory && !requestParams.containsKey(paramName)) {
+                        errorUtil.setError(errorUtil.getErrorByCode("ERR10004") + " -> " + paramName);
+                        return false;
                     }
+
+                    if (errorUtil.checkStatus()) {
+                        return false;
+                    }
+
+                    if (requestParams.containsKey(paramName)) {
+                        String paramValue = requestParams.get(paramName);
+
+                        validationEngine.validate(apiFetchConfig.get(0).get("api_code").toString(), Map.of(paramName, paramValue));
+                    }
+
                 }
             }
             //return true;

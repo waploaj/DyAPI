@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-package com.daraja.daraja.common;
+package com.daraja.daraja.common.validation;
 
 import com.daraja.daraja.service.DatabaseService;
 import com.daraja.daraja.utility.ErrorHandlingUtility;
@@ -34,8 +34,10 @@ import java.util.Map;
 public class ValidationEngine {
     private static DatabaseService dbservice;
     private static ErrorHandlingUtility errorUtil = ErrorHandlingUtility.getInstance();
+    private static final ValidationEngine instance = new ValidationEngine();
+    private  static BusinessValidation businessUtil = BusinessValidation.getInstance();
 
-    private ValidationEngine() {
+    public ValidationEngine() {
     }
 
     public static DatabaseService getDatabaseService() {
@@ -45,7 +47,12 @@ public class ValidationEngine {
         return dbservice;
     }
 
+    public static ValidationEngine getInstance() {
+        return instance;
+    }
+
     public void validate(String apiCode, Map<String, Object> requestParams) throws ValidationException {
+        errorUtil.clearError();
         for (Map.Entry<String, Object> entry : requestParams.entrySet()) {
             String paramName = entry.getKey();
             Object paramValue = entry.getValue();
@@ -53,13 +60,17 @@ public class ValidationEngine {
             // Fetch validation rules based on api_code and parameter_name
             boolean validationPassed = fetchValidationRules(apiCode, paramName, paramValue);
             if (!validationPassed) {
-                throw new ValidationException("Validation failed for parameter: " + paramName);
+                errorUtil.setError(errorUtil.getErrorByCode("ERR10015") +" " +paramName);
+                return;
+                //throw new ValidationException("Validation failed for parameter: " + paramName);
             }
         }
     }
 
     private boolean fetchValidationRules(String apiCode, String parameterName, Object paramValue) throws ValidationException {
         // Fetch validation rules from the database based on api_code and parameter_name
+        errorUtil.clearError();
+
         String query = "SELECT * FROM ValidationRules WHERE api_code = ? AND parameter_name = ?";
         List<Map<String, Object>> rules = getDatabaseService().executeQuery(query,
                 Arrays.asList(apiCode, parameterName));
@@ -67,7 +78,7 @@ public class ValidationEngine {
         // Iterate through the rules and execute validations
         for (Map<String, Object> rule : rules) {
             String validationRule = (String) rule.get("validation_rule");
-            String businessValidationId = (String) rule.get("id");
+            String businessValidationId = rule.get("id").toString();
 
             // Retrieve codes from the rule
             String businessValidationCode = (String) rule.get("business_validation_code");
@@ -77,32 +88,72 @@ public class ValidationEngine {
             // Check and execute appropriate validation
             if (businessValidationCode != null && !businessValidationCode.isEmpty()) {
                 // Fetch business validation description and execute the validation
-                BusinessValidation businessValidation = fetchBusinessValidation(businessValidationId);
-                businessValidation.executeBusinessValidation(businessValidation, paramValue);
+                 fetchBusinessValidation(businessValidationId);
+                if(errorUtil.checkStatus())
+                    return false;
+
+                businessUtil.executeBusinessValidation(paramValue);
             } else if (dataValidationCode != null && !dataValidationCode.isEmpty()) {
                 executeDataTypeValidation(dataValidationCode, paramValue, rule);
             } else if (commonValidationCode != null && !commonValidationCode.isEmpty()) {
                 executeCommonValidation(commonValidationCode, paramValue);
             } else {
-                throw new ValidationException("No valid validation type found for parameter: " + parameterName);
+                errorUtil.setError(errorUtil.getErrorByCode("ERR10015") +" " +parameterName);
+                return false;
+                //throw new ValidationException("No valid validation type found for parameter: " + parameterName);
             }
         }
         return true; // Return true if all validations pass
     }
 
-    private BusinessValidation fetchBusinessValidation(String validationCode) throws ValidationException {
+    private void fetchBusinessValidation(String validationCode) throws ValidationException {
+        errorUtil.clearError();
         String query = "SELECT * FROM BusinessValidation WHERE id = ?";
-        List<Map<String, Object>> validations = getDatabaseService().executeQuery(query, Arrays.asList(validationCode));
+        List<Map<String, Object>> validations = getDatabaseService().executeQuery(query, Arrays.asList(Integer.parseInt(validationCode)));
 
         if (validations.isEmpty()) {
-            throw new ValidationException("No business validation found for code: " + validationCode);
+            errorUtil.setError(errorUtil.getErrorByCode("ERR10016") +"->"+validationCode);
+            //throw new ValidationException("No business validation found for code: " + validationCode);
         }
+        if(!errorUtil.checkStatus()) {
+            Map<String, Object> validation = validations.get(0);
+            if(!validation.get("api_code").toString().isEmpty())
+                businessUtil.setApiCode(validation.get("api_code").toString());
+            if(!validation.get("validation_code").toString().isEmpty())
+                businessUtil.setValidationCode(validation.get("validation_code").toString());
+            if(!validation.get("validation_description").toString().isEmpty())
+                businessUtil.setValidationDescription(validation.get("validation_description").toString());
+            if(!validation.get("request_param").toString().isEmpty())
+                businessUtil.setRequestParam(validation.get("request_param").toString());
+            if (!validation.get("validation_rule").toString().isEmpty()) {
+                String validationRule = validation.get("validation_rule").toString();
+                businessUtil.setValidationRule(validationRule);
 
-        Map<String, Object> validation = validations.get(0);
-        return new BusinessValidation(
-                (String) validation.get("validation_code"),
-                (String) validation.get("validation_description")
-        );
+                // Here, parse the validation rule string and create BusinessValidationRule instances
+                // Assuming the format is: "db_lookup|user_software_usage|number_of_requests|user_id|=1000"
+                String[] parts = validationRule.split("\\|");
+                if (parts.length >= 5) {
+                    // Constructing BusinessValidationRule from parts
+                    String type = parts[0]; // For example, db_lookup
+                    String tableName = parts[1];
+                    String columnName = parts[2];
+                    String userIdColumn = parts[3];
+                    String criteria = parts[4];
+
+                    // Example of creating the BusinessValidationRule
+                    if (type.equals("db_lookup")) {
+                        BusinessValidation.BusinessValidationRule rule = new BusinessValidation.BusinessValidationRule(
+                                userIdColumn,
+                                BusinessValidation.ValidationType.DB_LOOKUP,
+                                "=",
+                                criteria,
+                                validationRule
+                        );
+                        businessUtil.getValidationRules().add(rule); // Assuming there's a getter for validationRules
+                    }
+                }
+            }
+        }
     }
 
     private void executeDataTypeValidation(String rule, Object value, Map<String, Object> ruleDetails) throws ValidationException {
