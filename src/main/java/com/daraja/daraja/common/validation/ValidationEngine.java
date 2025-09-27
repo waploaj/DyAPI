@@ -128,6 +128,9 @@ public class ValidationEngine {
             if (!validation.get("validation_rule").toString().isEmpty()) {
                 String validationRule = validation.get("validation_rule").toString();
                 businessUtil.setValidationRule(validationRule);
+            if(!validation.get("validation_action_type").toString().isEmpty()){
+                businessUtil.setValidationActionType(validation.get("validation_action_type").toString());
+            }
 
                 // Here, parse the validation rule string and create BusinessValidationRule instances
                 // Assuming the format is: "db_lookup|user_software_usage|number_of_requests|user_id|=1000"

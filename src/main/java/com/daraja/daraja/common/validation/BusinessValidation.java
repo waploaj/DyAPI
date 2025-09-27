@@ -36,16 +36,17 @@ import java.util.Objects;
 public class BusinessValidation {
 
     public enum ValidationType {
-        COMPARISON,  // e.g., value > 100
-        REGEX,       // e.g., email must match pattern
+        COMPARISON,
+        REGEX,
         DB_LOOKUP,   // e.g., must exist in master table
-        CROSS_FIELD  // e.g., fieldA depends on fieldB's value
+        CROSS_FIELD  //, fieldA depends on fieldB's value
     }
 
 
     private String validationCode;
     private String validationDescription;
     private String validationRule;
+    private String validationActionType;
     private String requestParam;
     private String api_code;
     private List<BusinessValidationRule> validationRules;
@@ -149,6 +150,10 @@ public class BusinessValidation {
         this.api_code = apiCode;
     }
 
+    public void setValidationActionType(String validationActionType){
+        this.validationActionType = validationActionType;
+    }
+
     /**
      * Executes the business validation based on the given parameter value.
      *
@@ -186,6 +191,7 @@ public class BusinessValidation {
      */
     private boolean applyBusinessRule(BusinessValidationRule validationRule, Object paramValue) {
         switch (validationRule.getValidationType()) {
+            //TODO: here value should not be static should be load from somewhere
             case COMPARISON:
                 return handleComparisonRule(validationRule, paramValue);
             case REGEX:
@@ -206,6 +212,7 @@ public class BusinessValidation {
             if (paramValue instanceof Number) {
                 Double value = ((Number) paramValue).doubleValue();
                 switch (validationRule.getOperator()) {
+                    //TODO: Here operator should not be hardcoded
                     case ">":
                         return value > threshold;
                     case "<":
@@ -253,9 +260,11 @@ public class BusinessValidation {
         String columnName = parts[2];
         String userIdColumn = parts[3];
 
+        String finalCriterion =  parts[4];
+
         // Create whereConditions map
         Map<String, Object> whereConditions = new HashMap<>();
-        whereConditions.put(userIdColumn, paramValue); // e.g., user_id = paramValue
+        whereConditions.put(userIdColumn, paramValue); //  user_id = paramValue
 
         // Get valid values from the database
         List<Map<String, Object>> results = getDatabaseService().getValidValues(
@@ -265,7 +274,94 @@ public class BusinessValidation {
         );
 
         // Check if any results were returned
-        return !results.isEmpty();
+        if(results.isEmpty()){
+            errorUtil.setErrorByCode("ERR10019");
+            return false;
+        }
+        if(errorUtil.checkStatus()){
+            return false;
+        }
+
+        System.out.println(results.get(0).get(columnName));
+        Object dbValue = results.get(0).get(columnName);
+
+        if(dbValue ==  null){
+            errorUtil.setErrorByCode("ERR10020");
+            return  false;
+        }
+
+        if(errorUtil.checkStatus())
+            return false;
+
+        String operator = finalCriterion.substring(0, 1);
+        String criterionValueStr = finalCriterion.substring(1);
+
+        try {
+            // Convert the database value and criterion value to numbers for numeric comparison
+            Double dbValueNumber = Double.valueOf(dbValue.toString());
+            Double criterionValue = Double.valueOf(criterionValueStr);
+
+            // Perform comparison based on the operator
+            boolean isValid = false;
+            switch (operator) {
+                case "=":
+                case "==":
+                    isValid = Objects.equals(dbValueNumber, criterionValue);  // Equal check
+                    break;
+                case ">":
+                    isValid = dbValueNumber > criterionValue;  // Greater than
+                    break;
+                case "<":
+                    isValid = dbValueNumber < criterionValue;  // Less than
+                    break;
+                case ">=":
+                    isValid =  dbValueNumber >= criterionValue; // Greater than or equal
+                    break;
+                case "<=":
+                    isValid =  dbValueNumber <= criterionValue; // Less than or equal
+                    break;
+                default:
+                    errorUtil.setError(errorUtil.getErrorByCode("ERR10021")
+                    +operator);
+                    return false;
+                    //throw new IllegalArgumentException("Unsupported operator in criterion: " + operator);
+            }
+
+            if (isValid) {
+                switch (validationActionType) {
+                    //TODO HERE WILL CHECK BASED ON VALIDATION ACTION TYPE IN VALIDATION_RULE
+
+                    case "EVALUATION":
+                        return true;
+
+                    case "EXPRESSION":
+                        return true;
+
+                    case "UPDATE":
+                        return true;
+
+                    case "LOGIC":
+                        return true;
+
+                    default:
+                        errorUtil.setError(errorUtil.getErrorByCode("ERR10023")+"->" + validationActionType);
+                        return false;
+                }
+            } else {
+                //TODO We have to call a method in commonValidation For failure proccess
+                // If validation failed, dynamically invoke the failure method
+                //invokeMethodDynamically("failureMethod", paramValue);
+                return false;
+            }
+
+        } catch (NumberFormatException e) {
+            errorUtil.setError(errorUtil.getErrorByCode("ERROR")+"->"+
+                    criterionValueStr);
+            //throw new IllegalArgumentException("Invalid comparison value in the rule: " + criterionValueStr, e);
+            return false;
+        }
+
+
     }
 
     // Placeholder for cross-field validation

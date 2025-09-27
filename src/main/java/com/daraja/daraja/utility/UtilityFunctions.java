@@ -237,6 +237,7 @@ public class UtilityFunctions {
 
 
     public static String getAfterV1(String url) {
+        //TODO: load the version from appcontext
         String prefix = "/v1/";
         // Convert the input string to lower case for case-insensitive comparison
         String lowerUrl = url.toLowerCase();
@@ -268,6 +269,7 @@ public class UtilityFunctions {
         if(!containsSqlInjection(_afterVersion)){
             requestPath = _afterVersion;
         }
+        //TODO: IMPORTANT insteady of mention public we can load the defined schema
         String _query = "SELECT * FROM PUBLIC.PREAPICONFIG WHERE PATH = ?";
 
         List<Map<String, Object>> results = getDatabaseService().executeQuery(_query, Collections.singletonList(requestPath));
