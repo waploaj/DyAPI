@@ -102,6 +102,7 @@ public class ApiHandler extends HttpServlet {
             UtilityFunctions.setRequestParametersDynamically(targetClassName, requestParams);
         } catch (Exception e) {
             e.printStackTrace();
+            //TODO: to change hard coded error message to db error code
             resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Error setting request parameters");
             return;
         }
@@ -124,7 +125,7 @@ public class ApiHandler extends HttpServlet {
         List<Map<String, Object>> apiPreconfigList = new ArrayList<>();
         String requestPath = UtilityFunctions.getAfterV1(url);
         List<Map<String, Object>> results = UtilityFunctions.getApiCode(requestPath);
-        // Process all results
+        //TODO: Process all results
         if (!results.isEmpty()) {
             apiPreconfigList.addAll(results);
         }else{
